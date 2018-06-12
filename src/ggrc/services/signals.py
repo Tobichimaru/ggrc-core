@@ -28,6 +28,17 @@ class Signals(object):
       """,
   )
 
+  comment_created = signals.signal(
+      "Comment created",
+      """
+      Indicates that a comment was added to the session (before flush).
+
+        :obj: The model instance
+        :source: Object to which comment belongs to
+        :service: The instance of model handling the Comment create operation
+      """,
+  )
+
 
 class Restful(object):
   """Class storing REST-related signals."""

@@ -282,7 +282,49 @@ def _handle_audit_put_after_commit(sender, obj=None, **kwargs):
       _ARCHIVED_TMPL if obj.archived else _UNARCHIVED_TMPL)
 
 
-def _handle_issuetracker(sender, obj=None, src=None, **kwargs):
+def _get_added_comment_id(src):
+  """Returns comment ID from given request."""
+  if not src:
+    return None
+
+  actions = src.get('actions') or {}
+  related = actions.get('add_related') or []
+
+  if not related:
+    return None
+
+  related_obj = related[0]
+
+  if related_obj.get('type') != 'Comment':
+    return None
+
+  return related_obj.get('id')
+
+
+def _get_added_comment_text(src):
+  """Returns comment text from given request."""
+  comment_id = _get_added_comment_id(src)
+  if comment_id is not None:
+    comment_row = db.session.query(
+        all_models.Comment.description,
+        all_models.Person.email,
+        all_models.Person.name
+    ).outerjoin(
+        all_models.Person,
+        all_models.Person.id == all_models.Comment.modified_by_id,
+    ).filter(
+        all_models.Comment.id == comment_id
+    ).first()
+    if comment_row is not None:
+      desc, creator_email, creator_name = comment_row
+      if not creator_name:
+        creator_name = creator_email
+      return html2text.HTML2Text().handle(desc).strip('\n'), creator_name
+  return None, None
+
+
+def _handle_issuetracker(sender, obj=None, src=None,
+                         comment_fetcher=_get_added_comment_text, **kwargs):
   """Handles IssueTracker information during assessment update event."""
   del sender  # Unused
 
@@ -317,7 +359,8 @@ def _handle_issuetracker(sender, obj=None, src=None, **kwargs):
 
   try:
     _update_issuetracker_issue(
-        obj, issue_tracker_info, initial_assessment, initial_info, src)
+        obj, issue_tracker_info, initial_assessment, initial_info, src,
+        comment_fetcher)
   except integrations_errors.Error as error:
     if error.status == 429:
       logger.error(
@@ -359,6 +402,30 @@ def _handle_assessment_deleted(sender, obj=None, service=None):
     db.session.delete(issue_obj)
 
 
+def _handle_comment_create(sender, obj=None, source=None):
+  """Handles comment put event."""
+  del sender  # Unused
+
+  if not isinstance(source, all_models.Assessment):
+    return
+
+  def get_comment(param):
+    return param['text'], param['author']
+
+  person, _ = db.session.query(
+      all_models.Person,
+      all_models.Person.id == obj.modified_by_id,
+  ).first()
+
+  _handle_issuetracker(
+      sender=all_models.Assessment, obj=source,
+      comment_fetcher=get_comment, initial_state=source,
+      src={
+          'text': obj.description,
+          'author': person.name if person.name else person.email
+      })
+
+
 def init_hook():
   """Initializes hooks."""
 
@@ -387,6 +454,9 @@ def init_hook():
 
   signals.Restful.model_deleted.connect(
       _handle_assessment_deleted, sender=all_models.Assessment)
+
+  signals.Signals.comment_created.connect(
+      _handle_comment_create, sender=all_models.Comment)
 
 
 def start_update_issue_job(audit_id, message):
@@ -581,47 +651,6 @@ def _fill_current_value(issue_params, assessment, initial_info):
   return issue_params
 
 
-def _get_added_comment_id(src):
-  """Returns comment ID from given request."""
-  if not src:
-    return None
-
-  actions = src.get('actions') or {}
-  related = actions.get('add_related') or []
-
-  if not related:
-    return None
-
-  related_obj = related[0]
-
-  if related_obj.get('type') != 'Comment':
-    return None
-
-  return related_obj.get('id')
-
-
-def _get_added_comment_text(src):
-  """Returns comment text from given request."""
-  comment_id = _get_added_comment_id(src)
-  if comment_id is not None:
-    comment_row = db.session.query(
-        all_models.Comment.description,
-        all_models.Person.email,
-        all_models.Person.name
-    ).outerjoin(
-        all_models.Person,
-        all_models.Person.id == all_models.Comment.modified_by_id,
-    ).filter(
-        all_models.Comment.id == comment_id
-    ).first()
-    if comment_row is not None:
-      desc, creator_email, creator_name = comment_row
-      if not creator_name:
-        creator_name = creator_email
-      return html2text.HTML2Text().handle(desc).strip('\n'), creator_name
-  return None, None
-
-
 def _is_issue_tracker_enabled(audit=None):
   """Returns a boolean whether issue tracker integration feature is enabled.
 
@@ -749,9 +778,11 @@ def _create_issuetracker_info(assessment, issue_tracker_info):
 
 
 def _update_issuetracker_issue(assessment, issue_tracker_info,
-                               initial_assessment, initial_info, request):
+                               initial_assessment, initial_info, request,
+                               comment_fetcher):
   """Collects information and sends a request to update external issue."""
   # pylint: disable=too-many-locals
+  # pylint: disable=too-many-arguments
   issue_id = issue_tracker_info.get('issue_id')
   if not issue_id:
     return
@@ -779,7 +810,7 @@ def _update_issuetracker_issue(assessment, issue_tracker_info,
     comments.append(status_comment)
 
   # Attach user comments if any.
-  comment_text, comment_author = _get_added_comment_text(request)
+  comment_text, comment_author = comment_fetcher(request)
   if comment_text is not None:
     comments.append(
         _COMMENT_TMPL % (

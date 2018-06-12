@@ -3,9 +3,8 @@
 
 """Integration tests for assessments with IssueTracker integration."""
 
-import mock
 from collections import OrderedDict
-
+import mock
 import ddt
 
 from ggrc import db
@@ -134,6 +133,27 @@ class TestIssueTrackerIntegration(SnapshotterBaseTestCase):
               'type': None,
               'severity': u'S3',
           })
+
+  @mock.patch('ggrc.integrations.issues.Client.update_issue')
+  def test_update_issuetracker_info_on_asmt_import(self, mock_update_issue):
+    """Test issuetracker issue updated when comment for assessment imported"""
+    with mock.patch.object(assessment_integration,
+                           '_is_issue_tracker_enabled',
+                           return_value=True):
+      iti = factories.IssueTrackerIssueFactory(enabled=True)
+      asmt = iti.issue_tracked_obj
+      asmt_id = asmt.id
+      audit = asmt.audit
+      comment = 'Some imported comment'
+      self.import_data(OrderedDict([
+          ('object_type', 'Assessment'),
+          ('Code*', asmt.slug),
+          ('Audit', audit.slug),
+          ('Comments', comment),
+      ]), dry_run=False)
+      asmt = db.session.query(models.Assessment).get(asmt_id)
+      self.assertEqual(asmt.comments[0].description, 'Some imported comment')
+      mock_update_issue.assert_called_once()
 
   # pylint: disable=unused-argument
   @mock.patch('ggrc.integrations.issues.Client.update_issue')

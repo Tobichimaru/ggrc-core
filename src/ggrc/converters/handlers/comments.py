@@ -9,6 +9,7 @@ from ggrc.converters import errors
 from ggrc.converters.handlers.handlers import ColumnHandler
 from ggrc.models import all_models
 from ggrc.login import get_current_user_id
+from ggrc.services import signals
 
 
 class CommentColumnHandler(ColumnHandler):
@@ -53,3 +54,6 @@ class CommentColumnHandler(ColumnHandler):
       mapping = all_models.Relationship(source=current_obj,
                                         destination=comment)
       db.session.add(mapping)
+      signals.Signals.comment_created.send(comment.__class__,
+                                           source=current_obj,
+                                           obj=comment)
