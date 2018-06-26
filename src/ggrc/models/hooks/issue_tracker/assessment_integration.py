@@ -10,6 +10,7 @@ import urlparse
 import html2text
 
 import sqlalchemy as sa
+from sqlalchemy.orm import load_only
 
 from ggrc import access_control
 from ggrc import db
@@ -284,21 +285,13 @@ def _handle_audit_put_after_commit(sender, obj=None, **kwargs):
 
 def _get_added_comment_id(src):
   """Returns comment ID from given request."""
-  if not src:
+  try:
+    related_obj = src.get('actions').get('add_related')[0]
+    if related_obj.get('type') != 'Comment':
+      return None
+    return related_obj.get('id')
+  except (AttributeError, IndexError):
     return None
-
-  actions = src.get('actions') or {}
-  related = actions.get('add_related') or []
-
-  if not related:
-    return None
-
-  related_obj = related[0]
-
-  if related_obj.get('type') != 'Comment':
-    return None
-
-  return related_obj.get('id')
 
 
 def _get_added_comment_text(src):
@@ -412,10 +405,8 @@ def _handle_comment_create(sender, obj=None, source=None):
   def get_comment(param):
     return param['text'], param['author']
 
-  person, _ = db.session.query(
-      all_models.Person,
-      all_models.Person.id == obj.modified_by_id,
-  ).first()
+  person = all_models.Person.query.filter_by(
+      id=obj.modified_by_id).options(load_only("name", "email")).one()
 
   _handle_issuetracker(
       sender=all_models.Assessment, obj=source,
