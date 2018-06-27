@@ -154,6 +154,20 @@ class TestIssueTrackerIntegration(SnapshotterBaseTestCase):
       asmt = db.session.query(models.Assessment).get(asmt_id)
       self.assertEqual(asmt.comments[0].description, 'Some imported comment')
       mock_update_issue.assert_called_once()
+      # pylint: disable=protected-access
+      mock_update_issue.assert_called_once_with(iti.issue_id, {
+          'priority': None,
+          'severity': None,
+          'component_id': None,
+          'hotlist_ids': [],
+          'status': 'ASSIGNED',
+          'comment': assessment_integration._COMMENT_TMPL % (
+              'Example User',
+              comment,
+              assessment_integration._get_assessment_url(asmt)
+          ),
+          'title': asmt.title,
+      })
 
   # pylint: disable=unused-argument
   @mock.patch('ggrc.integrations.issues.Client.update_issue')
