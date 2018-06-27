@@ -588,7 +588,12 @@ def _collect_issue_emails(assessment):
 
 def _get_assessment_url(assessment):
   """Returns string URL for assessment view page."""
-  return urlparse.urljoin(utils.get_url_root(), utils.view_url_for(assessment))
+  try:
+    return urlparse.urljoin(utils.get_url_root(),
+                            utils.view_url_for(assessment))
+  except RuntimeError:
+    logger.warning("No request context - no url created")
+    return ''
 
 
 def _build_status_comment(assessment, initial_assessment):
