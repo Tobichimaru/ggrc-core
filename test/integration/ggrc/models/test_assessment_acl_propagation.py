@@ -39,7 +39,7 @@ class TestAssessmentAclPropagation(TestCase):
     """Test asynchronous acl propagations."""
     number_of_threads = 10
 
-    def add_coment(assessment, ca_def_id, ca_val_id):
+    def add_comment(assessment, ca_def_id, ca_val_id):
       """Change workflow assignees."""
       self.generator.api.put(assessment, {
           "custom_attribute_values": [{
@@ -75,7 +75,7 @@ class TestAssessmentAclPropagation(TestCase):
             attributable=assessment,
             attribute_value="no"
         )
-      threads.append(Thread(target=add_coment,
+      threads.append(Thread(target=add_comment,
                             args=(assessment, ca_def.id, ca_val.id)))
 
     for thread in threads:

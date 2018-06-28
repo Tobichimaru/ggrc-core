@@ -16,9 +16,11 @@ from datetime import date, datetime
 from functools import partial
 from itertools import chain, izip
 from operator import attrgetter
+import logging
 
 from enum import Enum
 
+import sqlalchemy as sa
 from sqlalchemy import inspect
 from sqlalchemy.sql.expression import true
 
@@ -40,6 +42,37 @@ class Transitions(Enum):
 
 IdValPair = namedtuple("IdValPair", ["id", "val"])
 
+# retry count for possible deadlock issues.
+ADD_NOTIFICATION_RETRIES = 10
+
+logger = logging.getLogger(__name__)
+
+
+def _add_notification_with_retry(notification):
+  """Add notification for an object.
+
+  Args:
+    notification (Model): an object of notification.
+  """
+  last_error = None
+  for _ in range(ADD_NOTIFICATION_RETRIES):
+    try:
+      last_error = None
+      db.session.add(notification)
+      break
+    except sa.exc.OperationalError as error:
+      last_error = error
+      logger.error(error)
+
+  if last_error:
+    logger.critical(
+        "Add notifications failed with %d retries",
+        ADD_NOTIFICATION_RETRIES,
+    )
+    # The following error if exists will only be sa.exc.OperationalError so the
+    # pylint warning is invalid.
+    raise last_error  # pylint: disable=raising-bad-type
+
 
 def _add_notification(obj, notif_type, when=None):
   """Add notification for an object.
@@ -54,11 +87,12 @@ def _add_notification(obj, notif_type, when=None):
     return
   if not when:
     when = date.today()
-  db.session.add(models.Notification(
+  notification = models.Notification(
       object=obj,
       send_on=when,
       notification_type=notif_type,
-  ))
+  )
+  _add_notification_with_retry(notification)
 
 
 def _has_unsent_notifications(notif_type, obj):
@@ -130,7 +164,7 @@ def _add_assessment_updated_notif(obj):
     _add_notification(obj, notif_type)
   else:
     notification.updated_at = datetime.now()
-    db.session.add(notification)
+    _add_notification_with_retry(notification)
 
 
 def _add_state_change_notif(obj, state_change, remove_existing=False):
@@ -329,6 +363,11 @@ def _recipients_changed(history):
 
 
 def handle_assignable_created(objects):
+  """ Handles creation of assignable object
+
+  Args:
+    objects: Objects to process
+  """
   names = ["{}_open".format(obj._inflector.table_singular) for obj in objects]
   notif_types = models.NotificationType.query.filter(
       models.NotificationType.name.in_(set(names))
