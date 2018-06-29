@@ -4,6 +4,7 @@
 """Module provides a client implementation for Issue Tracker integration."""
 
 
+from logging import getLogger
 from ggrc.integrations import client
 
 
@@ -16,6 +17,8 @@ STATUSES = {
     'Completed': 'VERIFIED',
     'Deprecated': 'OBSOLETE',
 }
+
+logger = getLogger(__name__)
 
 
 class Client(client.JsonClient):
@@ -45,6 +48,7 @@ class Client(client.JsonClient):
     Returns:
       A dict representing an issue.
     """
+    logger.debug("Updating issue %s with params %s" % (issue_id, params))
     return self._put('%s/%s' % (self._BASE_PATH, issue_id), payload=params)
 
   def create_issue(self, params):
@@ -56,6 +60,7 @@ class Client(client.JsonClient):
     Returns:
       A dict representing an issue.
     """
+    logger.debug("Creating issue with params %s" % params)
     return self._post(self._BASE_PATH, payload=params)
 
   def search(self, params):
