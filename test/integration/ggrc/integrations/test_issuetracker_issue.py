@@ -153,7 +153,6 @@ class TestIssueTrackerIntegration(SnapshotterBaseTestCase):
       ]), dry_run=False)
       asmt = db.session.query(models.Assessment).get(asmt_id)
       self.assertEqual(asmt.comments[0].description, 'Some imported comment')
-      mock_update_issue.assert_called_once()
       # pylint: disable=protected-access
       mock_update_issue.assert_called_once_with(iti.issue_id, {
           'priority': None,

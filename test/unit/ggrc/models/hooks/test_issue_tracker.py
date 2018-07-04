@@ -89,7 +89,9 @@ class TestUtilityFunctions(unittest.TestCase):
         mock.patch(self.ISSUE_TRACKED_NAMESPACE +
                    '._update_issuetracker_info') as update_info_mock, \
         mock.patch(self.ISSUE_TRACKED_NAMESPACE + '._collect_issue_emails',
-                   side_effect=[(None, [])]):
+                   side_effect=[(None, [])]), \
+        mock.patch(self.ISSUE_TRACKED_NAMESPACE + '._get_added_comment_text',
+                   side_effect=[(None, None)]):
       error_data = integrations_errors.HttpError('data')
       update_issue_mock.side_effect = error_data
       src = {
@@ -100,9 +102,11 @@ class TestUtilityFunctions(unittest.TestCase):
       }
       all_models.IssuetrackerIssue.get_issue = mock.MagicMock()
       # pylint: disable=protected-access
-      assessment_integration._handle_issuetracker(sender=None,
-                                                  obj=mock.MagicMock(),
-                                                  src=src)
+      assessment_integration._handle_asmt_put_before_commit(
+          sender=None,
+          obj=mock.MagicMock(),
+          src=src
+      )
       update_info_mock.assert_called_once()
       self.assertEqual(update_info_mock.call_args[0][1]['enabled'],
                        issue_tracker_enabled)

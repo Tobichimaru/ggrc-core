@@ -164,7 +164,11 @@ def merge_dicts(*args):
 def get_url_root():
   if CUSTOM_URL_ROOT:
     return CUSTOM_URL_ROOT
-  return flask.request.url_root
+  try:
+    return flask.request.url_root
+  except RuntimeError:
+    # in case of working with no request specified
+    return ''
 
 
 def _prefix_camelcase(name, prefix):

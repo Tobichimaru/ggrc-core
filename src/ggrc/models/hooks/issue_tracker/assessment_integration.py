@@ -10,7 +10,6 @@ import urlparse
 import html2text
 
 import sqlalchemy as sa
-from sqlalchemy.orm import load_only
 
 from ggrc import access_control
 from ggrc import db
@@ -283,89 +282,39 @@ def _handle_audit_put_after_commit(sender, obj=None, **kwargs):
       _ARCHIVED_TMPL if obj.archived else _UNARCHIVED_TMPL)
 
 
-def _get_added_comment_id(src):
-  """Returns comment ID from given request."""
-  try:
-    related_obj = src.get('actions').get('add_related')[0]
-    if related_obj.get('type') != 'Comment':
-      return None
-    return related_obj.get('id')
-  except (AttributeError, IndexError):
-    return None
-
-
-def _get_added_comment_text(src):
-  """Returns comment text from given request."""
-  comment_id = _get_added_comment_id(src)
-  if comment_id is not None:
-    comment_row = db.session.query(
-        all_models.Comment.description,
-        all_models.Person.email,
-        all_models.Person.name
-    ).outerjoin(
-        all_models.Person,
-        all_models.Person.id == all_models.Comment.modified_by_id,
-    ).filter(
-        all_models.Comment.id == comment_id
-    ).first()
-    if comment_row is not None:
-      desc, creator_email, creator_name = comment_row
-      if not creator_name:
-        creator_name = creator_email
-      return html2text.HTML2Text().handle(desc).strip('\n'), creator_name
-  return None, None
-
-
-def _handle_issuetracker(sender, obj=None, src=None,
-                         comment_fetcher=_get_added_comment_text, **kwargs):
-  """Handles IssueTracker information during assessment update event."""
+def _handle_comment_imported(sender, obj=None, source=None,
+                             **kwargs):
+  """Handles signal send on comment assign via import."""
   del sender  # Unused
 
-  if not _is_issue_tracker_enabled(audit=obj.audit):
-    # Skip updating issue and info if feature is disabled on Audit level.
+  if not isinstance(source, all_models.Assessment):
     return
 
-  issue_obj = all_models.IssuetrackerIssue.get_issue(
-      _ASSESSMENT_MODEL_NAME, obj.id)
+  person = all_models.Person.query.get(obj.modified_by_id)
 
-  initial_info = issue_obj.to_dict(
-      include_issue=True,
-      include_private=True) if issue_obj is not None else {}
-  issue_tracker_info = dict(initial_info, **(src.get('issue_tracker') or {}))
+  _initiate_issuetracker_update(
+      obj=source,
+      src={},
+      initial_state=source,
+      comment_text=obj.description,
+      comment_author=person.name if person.name else person.email
+  )
 
-  issue_id = issue_tracker_info.get('issue_id')
 
-  if issue_tracker_info.get('enabled'):
-    if not issue_id:
-      # If assessment initially was created with disabled IssueTracker.
-      _create_issuetracker_info(obj, issue_tracker_info)
-      return
+def _handle_asmt_put_before_commit(sender, obj=None, src=None,
+                                   **kwargs):
+  """Handles information during assessment update event."""
+  del sender  # Unused
 
-    _, issue_tracker_info['cc_list'] = _collect_issue_emails(obj)
+  comment_text, comment_author = _get_added_comment_text(src)
 
-  else:
-    issue_tracker_info['enabled'] = False
-
-  initial_assessment = kwargs.pop('initial_state', None)
-
-  issue_tracker_info['title'] = obj.title
-
-  try:
-    _update_issuetracker_issue(
-        obj, issue_tracker_info, initial_assessment, initial_info, src,
-        comment_fetcher)
-  except integrations_errors.Error as error:
-    if error.status == 429:
-      logger.error(
-          'The request updating ticket ID=%s for assessment ID=%d was '
-          'rate limited: %s', issue_id, obj.id, error)
-    else:
-      logger.error(
-          'Unable to update a ticket ID=%s while updating '
-          'assessment ID=%d: %s', issue_id, obj.id, error)
-    obj.add_warning('issue_tracker', 'Unable to update a ticket.')
-
-  _update_issuetracker_info(obj, issue_tracker_info)
+  _initiate_issuetracker_update(
+      obj=obj,
+      src=src,
+      initial_state=kwargs.pop('initial_state', None),
+      comment_text=comment_text,
+      comment_author=comment_author
+  )
 
 
 def _handle_assessment_deleted(sender, obj=None, service=None):
@@ -395,28 +344,6 @@ def _handle_assessment_deleted(sender, obj=None, service=None):
     db.session.delete(issue_obj)
 
 
-def _handle_comment_create(sender, obj=None, source=None):
-  """Handles comment put event."""
-  del sender  # Unused
-
-  if not isinstance(source, all_models.Assessment):
-    return
-
-  def get_comment(param):
-    return param['text'], param['author']
-
-  person = all_models.Person.query.filter_by(
-      id=obj.modified_by_id).options(load_only("name", "email")).one()
-
-  _handle_issuetracker(
-      sender=all_models.Assessment, obj=source,
-      comment_fetcher=get_comment, initial_state=source,
-      src={
-          'text': obj.description,
-          'author': person.name if person.name else person.email
-      })
-
-
 def init_hook():
   """Initializes hooks."""
 
@@ -441,13 +368,13 @@ def init_hook():
       _handle_audit_put_after_commit, sender=all_models.Audit)
 
   signals.Restful.model_put_before_commit.connect(
-      _handle_issuetracker, sender=all_models.Assessment)
+      _handle_asmt_put_before_commit, sender=all_models.Assessment)
 
   signals.Restful.model_deleted.connect(
       _handle_assessment_deleted, sender=all_models.Assessment)
 
   signals.Signals.comment_created.connect(
-      _handle_comment_create, sender=all_models.Comment)
+      _handle_comment_imported, sender=all_models.Comment)
 
 
 def start_update_issue_job(audit_id, message):
@@ -588,12 +515,8 @@ def _collect_issue_emails(assessment):
 
 def _get_assessment_url(assessment):
   """Returns string URL for assessment view page."""
-  try:
-    return urlparse.urljoin(utils.get_url_root(),
-                            utils.view_url_for(assessment))
-  except RuntimeError:
-    logger.warning("No request context - no url created")
-    return ''
+  return urlparse.urljoin(utils.get_url_root(),
+                          utils.view_url_for(assessment))
 
 
 def _build_status_comment(assessment, initial_assessment):
@@ -660,7 +583,7 @@ def _is_issue_tracker_enabled(audit=None):
   if not _ISSUE_TRACKER_ENABLED:
     return False
 
-  if audit is not None:
+  if audit:
     audit_issue_tracker_info = audit.issue_tracker or {}
 
     if not bool(audit_issue_tracker_info.get('enabled')):
@@ -730,7 +653,7 @@ def _create_issuetracker_issue(assessment, issue_tracker_info):
     issue_params['verifier'] = assignee
 
   cc_list = issue_tracker_info.get('cc_list')
-  if cc_list is not None:
+  if cc_list:
     issue_params['ccs'] = cc_list
 
   res = issues.Client().create_issue(issue_params)
@@ -747,7 +670,7 @@ def _create_issuetracker_info(assessment, issue_tracker_info):
           _is_issue_tracker_enabled(audit=assessment.audit)):
 
     assignee_email, cc_list = _collect_issue_emails(assessment)
-    if assignee_email is not None:
+    if assignee_email:
       issue_tracker_info['assignee'] = assignee_email
       issue_tracker_info['cc_list'] = cc_list
 
@@ -774,16 +697,14 @@ def _create_issuetracker_info(assessment, issue_tracker_info):
 
 
 def _update_issuetracker_issue(assessment, issue_tracker_info,
-                               initial_assessment, initial_info, request,
-                               comment_fetcher):
+                               initial_assessment, initial_info,
+                               comments):
   """Collects information and sends a request to update external issue."""
   # pylint: disable=too-many-locals
   # pylint: disable=too-many-arguments
   issue_id = issue_tracker_info.get('issue_id')
   if not issue_id:
     return
-
-  comments = []
 
   # Handle switching of 'enabled' property.
   enabled = issue_tracker_info.get('enabled', False)
@@ -805,24 +726,17 @@ def _update_issuetracker_issue(assessment, issue_tracker_info,
     issue_params['status'] = status_value
     comments.append(status_comment)
 
-  # Attach user comments if any.
-  comment_text, comment_author = comment_fetcher(request)
-  if comment_text is not None:
-    comments.append(
-        _COMMENT_TMPL % (
-            comment_author, comment_text, _get_assessment_url(assessment)))
-
   if comments:
     issue_params['comment'] = '\n\n'.join(comments)
 
   # Handle hotlist ID update.
   hotlist_id = issue_tracker_info.get('hotlist_id')
-  if hotlist_id is not None and hotlist_id != initial_info.get('hotlist_id'):
+  if hotlist_id and hotlist_id != initial_info.get('hotlist_id'):
     issue_params['hotlist_ids'] = [hotlist_id] if hotlist_id else []
 
   # handle assignee and cc_list update
   assignee_email, cc_list = _collect_issue_emails(assessment)
-  if assignee_email is not None:
+  if assignee_email:
     issue_tracker_info['assignee'] = assignee_email
     issue_params['assignee'] = assignee_email
     issue_params['verifier'] = assignee_email
@@ -841,3 +755,118 @@ def _update_issuetracker_info(assessment, issue_tracker_info):
 
   all_models.IssuetrackerIssue.create_or_update_from_dict(
       assessment, issue_tracker_info)
+
+
+def _initiate_issuetracker_update(obj, src, comment_text, comment_author,
+                                  initial_state):
+  """Initiates the process of issuetracker issue update."""
+  current_issuetracker_info = _get_current_issuetracker_info(obj)
+  updated_issuetracker_info = _collect_issuetracker_info(
+      assessment=obj,
+      src=src,
+      initial_info=current_issuetracker_info
+  )
+
+  if not updated_issuetracker_info:
+    return
+
+  # Attach user comments if any.
+  comment = None
+  if comment_text:
+    comment = _COMMENT_TMPL % (comment_author, comment_text,
+                               _get_assessment_url(obj))
+
+  _process_issuetracker_update(
+      issue_tracker_info=updated_issuetracker_info,
+      initial_assessment=initial_state,
+      initial_info=current_issuetracker_info,
+      assessment=obj,
+      comments=[comment] if comment else [])
+
+
+def _process_issuetracker_update(issue_tracker_info, initial_assessment,
+                                 initial_info, assessment, comments):
+  """Handles exceptions gracefully when doing an update of IssueTracker."""
+  issue_id = issue_tracker_info.get('issue_id')
+  try:
+    _update_issuetracker_issue(
+        assessment, issue_tracker_info, initial_assessment, initial_info,
+        comments)
+  except integrations_errors.Error as error:
+    if error.status == 429:
+      logger.error(
+          'The request updating ticket ID=%s for assessment ID=%d was '
+          'rate limited: %s', issue_id, assessment.id, error)
+    else:
+      logger.error(
+          'Unable to update a ticket ID=%s while updating '
+          'assessment ID=%d: %s', issue_id, assessment.id, error)
+    assessment.add_warning('issue_tracker', 'Unable to update a ticket.')
+
+  _update_issuetracker_info(assessment, issue_tracker_info)
+
+
+def _get_added_comment_id(src):
+  """Returns comment ID from given request."""
+  try:
+    related_object = src['actions']['add_related'][0]
+    object_type = related_object['type']
+    object_id = related_object['id']
+  except (AttributeError, IndexError, KeyError):
+    return None
+  return object_id if object_type == 'Comment' else None
+
+
+def _get_added_comment_text(src):
+  """Returns comment text from given request."""
+  comment_id = _get_added_comment_id(src)
+  if comment_id:
+    comment_row = db.session.query(
+        all_models.Comment.description,
+        all_models.Person.email,
+        all_models.Person.name
+    ).outerjoin(
+        all_models.Person,
+        all_models.Person.id == all_models.Comment.modified_by_id,
+    ).filter(
+        all_models.Comment.id == comment_id
+    ).first()
+    if comment_row:
+      desc, creator_email, creator_name = comment_row
+      if not creator_name:
+        creator_name = creator_email
+      return html2text.HTML2Text().handle(desc).strip('\n'), creator_name
+  return None, None
+
+
+def _get_current_issuetracker_info(obj):
+  """Retrieves information about IssueTrackerIssue from DB."""
+  issue_obj = all_models.IssuetrackerIssue.get_issue(
+      _ASSESSMENT_MODEL_NAME, obj.id)
+  initial_info = issue_obj.to_dict(
+      include_issue=True,
+      include_private=True) if issue_obj else {}
+  return initial_info
+
+
+def _collect_issuetracker_info(assessment, src, initial_info):
+  """Collects IssueTracker information in the form of dict."""
+  if not _is_issue_tracker_enabled(audit=assessment.audit):
+    # Skip updating issue and info if feature is disabled on Audit level.
+    return None
+
+  issue_tracker_info = dict(initial_info,
+                            **(src.get('issue_tracker') or {}))
+
+  issue_id = issue_tracker_info.get('issue_id')
+  if not issue_tracker_info.get('enabled'):
+    issue_tracker_info['enabled'] = False
+  else:
+    if not issue_id:
+      # If assessment initially was created with disabled IssueTracker.
+      _create_issuetracker_info(assessment, issue_tracker_info)
+      return None
+    _, issue_tracker_info['cc_list'] = _collect_issue_emails(assessment)
+
+  issue_tracker_info['title'] = assessment.title
+  return issue_tracker_info
