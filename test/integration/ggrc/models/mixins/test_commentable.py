@@ -6,6 +6,7 @@
 from ggrc.models import all_models
 
 from integration.ggrc import TestCase
+from integration.ggrc.api_helper import Api
 from integration.ggrc.models import factories
 
 
@@ -15,6 +16,7 @@ class TestCommentableMixin(TestCase):
   def setUp(self):
     super(TestCommentableMixin, self).setUp()
     self.client.get("/login")
+    self.api = Api()
 
   def test_asmnt_comments(self):
     """Test if assessment has proper comments."""
@@ -35,3 +37,21 @@ class TestCommentableMixin(TestCase):
 
     self.assertEquals(1, len(asmnt_comments))
     self.assertEquals("test0", "".join(c.description for c in asmnt_comments))
+
+  def test_asmnt_comments_delete(self):
+    """Test if assessment deleted along with comments."""
+    assessment = factories.AssessmentFactory()
+    comment = factories.CommentFactory()
+    comment_id = comment.id
+    relationship = factories.RelationshipFactory(source=assessment,
+                                                 destination=comment)
+    relationship_id = relationship.id
+
+    result = self.api.delete(assessment)
+    self.assertEqual(result.status_code, 200)
+
+    comment = all_models.Comment.query.get(comment_id)
+    self.assertEqual(comment, None)
+
+    relationship = all_models.Relationship.query.get(relationship_id)
+    self.assertEqual(relationship, None)

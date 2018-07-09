@@ -140,6 +140,8 @@ class Commentable(object):
             )
         ),
         viewonly=True,
+        cascade="all, delete-orphan",
+        single_parent=True,
     )
 
 
