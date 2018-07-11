@@ -142,6 +142,10 @@ def handle_del_audit_issue_mapping(instances):
     src, dst = _order(instance.source, instance.destination)
     if _is_audit_issue(src, dst):
       _handle_del_audit_issue_mapping(audit=src, issue=dst)
+    if dst.type == all_models.Comment.__name__:
+      db.session.query(all_models.Comment).filter(
+          all_models.Comment.id == dst.id
+      ).delete(synchronize_session="fetch")
 
 
 def related_condition(obj, type_):

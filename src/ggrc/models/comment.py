@@ -139,9 +139,7 @@ class Commentable(object):
                 Relationship.destination_type == "Comment",
             )
         ),
-        viewonly=True,
-        cascade="all, delete-orphan",
-        single_parent=True,
+        viewonly=True
     )
 
 
