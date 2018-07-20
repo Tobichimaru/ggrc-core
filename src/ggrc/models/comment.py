@@ -139,7 +139,7 @@ class Commentable(object):
                 Relationship.destination_type == "Comment",
             )
         ),
-        viewonly=True
+        viewonly=True,
     )
 
 

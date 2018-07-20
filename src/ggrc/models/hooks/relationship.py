@@ -144,17 +144,6 @@ def handle_del_audit_issue_mapping(instances):
       _handle_del_audit_issue_mapping(audit=src, issue=dst)
 
 
-@from_session(all_models.Relationship, deleted=True)
-def handle_del_comment_mapping(instances):
-  """Handle delete of commentable objects. """
-  for instance in instances:
-    _, dst = _order(instance.source, instance.destination)
-    if dst.type == all_models.Comment.__name__:
-      db.session.query(all_models.Comment).filter(
-          all_models.Comment.id == dst.id
-      ).delete(synchronize_session="fetch")
-
-
 def related_condition(obj, type_):
   """Get condition to select all relationships between objects"""
   return sa.or_(
@@ -334,8 +323,6 @@ def init_hook():  # noqa
                   handle_new_audit_issue_mapping)
   sa.event.listen(sa.orm.session.Session, "before_flush",
                   handle_del_audit_issue_mapping)
-  sa.event.listen(sa.orm.session.Session, "before_flush",
-                  handle_del_comment_mapping)
 
   # Event listener for relationship delete operation validate.
   sa.event.listen(

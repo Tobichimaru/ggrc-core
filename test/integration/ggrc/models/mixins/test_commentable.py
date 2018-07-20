@@ -3,6 +3,8 @@
 
 """Integration tests for Commentable mixin."""
 
+import ddt
+
 from ggrc.models import all_models
 
 from integration.ggrc import TestCase
@@ -10,6 +12,7 @@ from integration.ggrc.api_helper import Api
 from integration.ggrc.models import factories
 
 
+@ddt.ddt
 class TestCommentableMixin(TestCase):
   """Test cases for Commentable mixin."""
 
@@ -38,16 +41,25 @@ class TestCommentableMixin(TestCase):
     self.assertEquals(1, len(asmnt_comments))
     self.assertEquals("test0", "".join(c.description for c in asmnt_comments))
 
-  def test_asmnt_comments_delete(self):
+  @ddt.data(factories.AssessmentFactory,
+            factories.ProcessFactory,
+            factories.ProgramFactory,
+            factories.AuditFactory,
+            factories.ControlFactory,
+            factories.DocumentFactory,
+            factories.SystemFactory,
+            factories.IssueFactory,
+            factories.ClauseFactory)
+  def test_asmnt_comments_delete(self, object_factory):
     """Test if assessment deleted along with comments."""
-    assessment = factories.AssessmentFactory()
+    obj = object_factory()
     comment = factories.CommentFactory()
     comment_id = comment.id
-    relationship = factories.RelationshipFactory(source=assessment,
+    relationship = factories.RelationshipFactory(source=obj,
                                                  destination=comment)
     relationship_id = relationship.id
 
-    result = self.api.delete(assessment)
+    result = self.api.delete(obj)
     self.assertEqual(result.status_code, 200)
 
     comment = all_models.Comment.query.get(comment_id)
@@ -55,3 +67,10 @@ class TestCommentableMixin(TestCase):
 
     relationship = all_models.Relationship.query.get(relationship_id)
     self.assertEqual(relationship, None)
+
+    delete_revision = all_models.Revision.query.filter(
+        all_models.Revision.resource_id == comment_id,
+        all_models.Revision.resource_type == "Comment",
+        all_models.Revision.action == "deleted"
+    ).first()
+    self.assertNotEqual(delete_revision, None)

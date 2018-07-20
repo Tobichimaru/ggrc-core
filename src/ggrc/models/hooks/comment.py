@@ -3,10 +3,13 @@
 
 """A module with Comment object creation hooks"""
 
+from ggrc import db
 from ggrc import login
 from ggrc.models import all_models
 from ggrc.access_control import role
 from ggrc.services import signals
+from ggrc.utils.log_event import log_event
+from blinker import ANY
 
 
 def init_hook():
@@ -30,3 +33,20 @@ def init_hook():
           person=user,
           object=comment,
       )
+
+  @signals.Restful.model_deleted.connect_via(sender=ANY)
+  def handle_del_comment_mapping(sender, obj=None, **kwargs):
+    """Handle delete of commentable objects. """
+    # pylint: disable=unused-argument
+    if not getattr(obj, "related_destinations", None):
+      return
+    user = login.get_current_user()
+    for rel in obj.related_destinations:
+      comment = None
+      if rel.source_type == "Comment":
+        comment = rel.source
+      elif rel.destination_type == "Comment":
+        comment = rel.destination
+      if comment:
+        db.session.delete(comment)
+        log_event(db.session, comment, flush=False, current_user_id=user.id)
