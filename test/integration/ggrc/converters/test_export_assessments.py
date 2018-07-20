@@ -71,12 +71,9 @@ class TestExport(TestCase):
 
   def test_search_by_deleted_relation(self):
     """Filter by deleted relation to comment"""
-    comment_id = self.comment.id
     db.session.delete(self.rel)
     db.session.commit()
-    comments = db.session.query(all_models.Comment).filter(
-        all_models.Comment.id == comment_id).all()
-    self.assertEquals(comments, [])
+    self.assert_slugs("comment", self.comment.description, [])
 
   def test_search_by_deleted_comment(self):
     """Filter by deleted comment"""
