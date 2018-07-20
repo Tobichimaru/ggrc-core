@@ -55,9 +55,9 @@ class TestComprehensiveSheets(TestCase):
             "rows": 15,
         },
         "Program": {
-            "created": 13,
-            "ignored": 3,
-            "row_errors": 3,
+            "created": 14,
+            "ignored": 2,
+            "row_errors": 2,
             "row_warnings": 4,
             "rows": 16,
         },

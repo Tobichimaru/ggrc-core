@@ -112,8 +112,9 @@ class TestPreconditionsFailed(TestCase):
 
     preconditions_failed = self.assessment.preconditions_failed
 
-    self.assertTrue(preconditions_failed)
-    self.assertEqual(ca.value.preconditions_failed, ["value"])
+    # Temporarily disable check on mandatory GCA
+    self.assertFalse(preconditions_failed)
+    self.assertFalse(ca.value.preconditions_failed)
 
   def test_preconditions_failed_with_mandatory_filled_global_ca(self):
     """No preconditions failed if global mandatory CA is filled."""

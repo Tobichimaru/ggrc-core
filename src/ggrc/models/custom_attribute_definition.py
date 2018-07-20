@@ -74,6 +74,10 @@ class CustomAttributeDefinition(attributevalidator.AttributeValidator,
   def get_default_value_for(cls, attribute_type):
     return cls.ValidTypes.DEFAULT_VALUE.get(attribute_type)
 
+  @property
+  def is_global_ca(self):
+    return self.definition_id is None
+
   @builder.simple_property
   def default_value(self):
     return self.get_default_value_for(self.attribute_type)

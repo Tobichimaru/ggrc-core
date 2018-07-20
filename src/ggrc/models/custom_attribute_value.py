@@ -326,7 +326,9 @@ class CustomAttributeValue(base.ContextRBAC, Base, Indexed, db.Model):
 
     """
     failed_preconditions = []
-    if self.custom_attribute.mandatory and self.is_empty:
+    # Temporarily disable check on mandatory GCA
+    if self.custom_attribute.mandatory and self.is_empty \
+       and not self.custom_attribute.is_global_ca:
       failed_preconditions += ["value"]
     if (self.custom_attribute.attribute_type ==
             self.custom_attribute.ValidTypes.DROPDOWN):

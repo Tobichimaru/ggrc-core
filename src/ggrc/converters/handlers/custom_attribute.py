@@ -131,6 +131,7 @@ class CustomAttributeColumnHandler(handlers.TextColumnHandler):
 
   def get_date_value(self):
     """Get date value from input string date."""
+    definition = self.get_ca_definition()
     if not self.mandatory and self.raw_value == "":
       return None  # ignore empty fields
     value = None
@@ -140,19 +141,22 @@ class CustomAttributeColumnHandler(handlers.TextColumnHandler):
       )
     except (TypeError, ValueError):
       self.add_warning(errors.WRONG_VALUE, column_name=self.display_name)
-    if self.mandatory and value is None:
+    # Temporarily disable check on mandatory GCA
+    if self.mandatory and value is None and not definition.is_global_ca:
       self.add_error(errors.MISSING_VALUE_ERROR, column_name=self.display_name)
     return value
 
   def get_checkbox_value(self):
     """Get boolean value for checkbox fields."""
+    definition = self.get_ca_definition()
     if not self.mandatory and self.raw_value == "":
       return None  # ignore empty fields
     value = self.raw_value.lower() in ("yes", "true")
     if self.raw_value.lower() not in ("yes", "true", "no", "false"):
       self.add_warning(errors.WRONG_VALUE, column_name=self.display_name)
       value = None
-    if self.mandatory and value is None:
+    # Temporarily disable check on mandatory GCA
+    if self.mandatory and value is None and not definition.is_global_ca:
       self.add_error(errors.MISSING_VALUE_ERROR, column_name=self.display_name)
     return value
 
@@ -165,25 +169,30 @@ class CustomAttributeColumnHandler(handlers.TextColumnHandler):
     value = choice_map.get(self.raw_value.lower())
     if value is None and self.raw_value != "":
       self.add_warning(errors.WRONG_VALUE, column_name=self.display_name)
-    if self.mandatory and value is None:
+    # Temporarily disable check on mandatory GCA
+    if self.mandatory and value is None and not definition.is_global_ca:
       self.add_error(errors.MISSING_VALUE_ERROR, column_name=self.display_name)
     return value
 
   def get_text_value(self):
     """Get cleaned text value."""
+    definition = self.get_ca_definition()
     if not self.mandatory and self.raw_value == "":
       return None  # ignore empty fields
     value = self.clean_whitespaces(self.raw_value)
-    if self.mandatory and not value:
+    # Temporarily disable check on mandatory GCA
+    if self.mandatory and not value and not definition.is_global_ca:
       self.add_error(errors.MISSING_VALUE_ERROR, column_name=self.display_name)
     return value
 
   def get_rich_text_value(self):
     """Get parsed rich text value."""
+    definition = self.get_ca_definition()
     if not self.mandatory and self.raw_value == "":
       return None  # ignore empty fields
     value = url_parser.parse(self.raw_value)
-    if self.mandatory and not value:
+    # Temporarily disable check on mandatory GCA
+    if self.mandatory and not value and not definition.is_global_ca:
       self.add_error(errors.MISSING_VALUE_ERROR, column_name=self.display_name)
     return value
 
@@ -193,13 +202,15 @@ class CustomAttributeColumnHandler(handlers.TextColumnHandler):
     Returns:
         Person model instance
     """
+    definition = self.get_ca_definition()
     if not self.mandatory and self.raw_value == "":
       return None  # ignore empty fields
-    if self.mandatory and not self.raw_value:
+    # Temporarily disable check on mandatory GCA
+    if self.mandatory and not self.raw_value and not definition.is_global_ca:
       self.add_error(errors.MISSING_VALUE_ERROR, column_name=self.display_name)
       return None
     value = models.Person.query.filter_by(email=self.raw_value).first()
-    if self.mandatory and not value:
+    if self.mandatory and not value and not definition.is_global_ca:
       self.add_error(errors.WRONG_VALUE, column_name=self.display_name)
     return value
 

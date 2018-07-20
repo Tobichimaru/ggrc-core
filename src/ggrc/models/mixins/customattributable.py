@@ -502,7 +502,8 @@ class CustomAttributable(object):
     }
     # pylint: disable=not-an-iterable; we can iterate over relationships
     for cad in self.custom_attribute_definitions:
-      if cad.mandatory:
+      # Temporarily disable check on mandatory GCA
+      if cad.mandatory and not cad.is_global_ca:
         cav = values_map.get(cad.id)
         if not cav or not cav.attribute_value:
           return True
