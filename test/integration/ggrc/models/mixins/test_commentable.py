@@ -41,22 +41,28 @@ class TestCommentableMixin(TestCase):
     self.assertEquals(1, len(asmnt_comments))
     self.assertEquals("test0", "".join(c.description for c in asmnt_comments))
 
-  @ddt.data(factories.AssessmentFactory,
-            factories.ProcessFactory,
-            factories.ProgramFactory,
-            factories.AuditFactory,
-            factories.ControlFactory,
-            factories.DocumentFactory,
-            factories.SystemFactory,
-            factories.IssueFactory,
-            factories.ClauseFactory)
-  def test_asmnt_comments_delete(self, object_factory):
+  @ddt.data([factories.AssessmentFactory, True],
+            [factories.AssessmentFactory, False],
+            [factories.ProcessFactory, False],
+            [factories.ProgramFactory, False],
+            [factories.AuditFactory, True],
+            [factories.ControlFactory, False],
+            [factories.DocumentFactory, True],
+            [factories.SystemFactory, False],
+            [factories.IssueFactory, False],
+            [factories.ClauseFactory, False])
+  @ddt.unpack
+  def test_asmnt_comments_delete(self, object_factory, inverse_rel):
     """Test if assessment deleted along with comments."""
     obj = object_factory()
     comment = factories.CommentFactory()
     comment_id = comment.id
-    relationship = factories.RelationshipFactory(source=obj,
-                                                 destination=comment)
+    if inverse_rel:
+      relationship = factories.RelationshipFactory(source=comment,
+                                                   destination=obj)
+    else:
+      relationship = factories.RelationshipFactory(source=obj,
+                                                   destination=comment)
     relationship_id = relationship.id
 
     result = self.api.delete(obj)

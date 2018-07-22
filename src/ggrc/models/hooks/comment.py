@@ -6,9 +6,9 @@
 from ggrc import db
 from ggrc import login
 from ggrc.models import all_models
+from ggrc.models.relationship import Relatable
 from ggrc.access_control import role
 from ggrc.services import signals
-from ggrc.utils.log_event import log_event
 from blinker import ANY
 
 
@@ -38,15 +38,12 @@ def init_hook():
   def handle_del_comment_mapping(sender, obj=None, **kwargs):
     """Handle delete of commentable objects. """
     # pylint: disable=unused-argument
-    if not getattr(obj, "related_destinations", None):
+    if not issubclass(type(obj), Relatable):
       return
-    user = login.get_current_user()
-    for rel in obj.related_destinations:
-      comment = None
-      if rel.source_type == "Comment":
-        comment = rel.source
-      elif rel.destination_type == "Comment":
-        comment = rel.destination
-      if comment:
-        db.session.delete(comment)
-        log_event(db.session, comment, flush=False, current_user_id=user.id)
+    if isinstance(obj.related_objects, list):
+      comments = [rel_obj for rel_obj in obj.related_objects
+                  if isinstance(rel_obj, all_models.Comment)]
+    else:
+      comments = obj.related_objects(_types={all_models.Comment.__name__})
+    for comment in comments:
+      db.session.delete(comment)
