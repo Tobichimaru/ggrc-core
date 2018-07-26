@@ -9,10 +9,12 @@ from ggrc.notifications import common
 from ggrc.notifications import notification_handlers
 from ggrc.notifications import data_handlers
 from ggrc.utils import proposal
+from ggrc.utils import detached_objects
 
 
 NIGHTLY_CRON_JOBS = [
     common.send_daily_digest_notifications,
+    detached_objects.delete_detached_comments,
 ]
 
 HOURLY_CRON_JOBS = [

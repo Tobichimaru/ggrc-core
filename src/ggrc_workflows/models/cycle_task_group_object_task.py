@@ -238,7 +238,7 @@ class CycleTaskGroupObjectTask(roleable.Roleable,
     return self.cycle.workflow
 
   @builder.simple_property
-  def related_objects(self):
+  def related_objects(self, _types=None):
     """Compute and return a list of all the objects related to this cycle task.
 
     Related objects are those that are found either on the "source" side, or
@@ -250,7 +250,11 @@ class CycleTaskGroupObjectTask(roleable.Roleable,
     # pylint: disable=not-an-iterable
     sources = [r.source for r in self.related_sources]
     destinations = [r.destination for r in self.related_destinations]
-    return sources + destinations
+    related = sources + destinations
+
+    if _types:
+      return {obj for obj in related if obj and obj.type in _types}
+    return set(related)
 
   @builder.simple_property
   def allow_change_state(self):
