@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Copyright (C) 2018 Google Inc.
+# Licensed under http://www.apache.org/licenses/LICENSE-2.0 <see LICENSE file>
+
+set -o nounset
+set -o errexit
+
+
+usage () {
+  cat <<EOF
+Usage: $(basename ${0}) [-h] [-d DATABASE_NAME] [SQL_DUMP_FILE]
+
+Reset entire database. If sql dump file is provided, it gets imported and
+migrations applied on top of it. The script should be used for old db dumps
+that were made before squashing of migration chain.
+
+Arguments:
+  -h : print help
+  -d DATABASE : Reset and use the selected database
+     DUMPFILE : Mysql dump file that will be imported into the cleand database.
+
+Example usage:
+  $(basename $0)
+  $(basename $0) ggrc-qa-dump.sql
+  $(basename $0) -d ggrcdevtest
+  $(basename $0) -d ggrcdevtest test-data-dump.sql
+EOF
+  exit 0
+}
+
+COMMIT_BEFORE_SQUASH="6f924682801a4205c10f3300a5e00608b6874b17"
+CURRENT_COMMIT="$(git rev-parse HEAD)"
+
+git checkout -q "$COMMIT_BEFORE_SQUASH"
+db_reset "$1"
+git checkout -q "$CURRENT_COMMIT"
+db_migrate
