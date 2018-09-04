@@ -5,33 +5,32 @@
 set -o nounset
 set -o errexit
 
-
 usage () {
   cat <<EOF
-Usage: $(basename ${0}) [-h] [-d DATABASE_NAME] [SQL_DUMP_FILE]
+Usage: $(basename ${0}) [SQL_DUMP_FILE]
 
-Reset entire database. If sql dump file is provided, it gets imported and
-migrations applied on top of it. The script should be used for old db dumps
-that were made before squashing of migration chain.
+Reset and migrate the database with an old db dump provided.
+The script assumes that you aren't on the detached HEAD state
+and don't have any unstaged changes.
 
 Arguments:
-  -h : print help
-  -d DATABASE : Reset and use the selected database
-     DUMPFILE : Mysql dump file that will be imported into the cleand database.
+  DUMPFILE : Mysql dump file that will be imported into the clean database.
 
 Example usage:
-  $(basename $0)
   $(basename $0) ggrc-qa-dump.sql
-  $(basename $0) -d ggrcdevtest
-  $(basename $0) -d ggrcdevtest test-data-dump.sql
 EOF
   exit 0
 }
 
+if [ $# -eq 0 ]
+then
+  usage
+fi
+
 COMMIT_BEFORE_SQUASH="6f924682801a4205c10f3300a5e00608b6874b17"
-CURRENT_COMMIT="$(git rev-parse HEAD)"
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
 git checkout -q "$COMMIT_BEFORE_SQUASH"
 db_reset "$1"
-git checkout -q "$CURRENT_COMMIT"
+git checkout -q "$CURRENT_BRANCH"
 db_migrate
