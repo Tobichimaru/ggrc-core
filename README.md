@@ -52,6 +52,8 @@ vim docker-compose.override.yml # Add the keys from cloud console
 ./bin/containers setup dev
 ```
 
+_NOTE: The setup script relies on docker-compose < 1.23. See [this](https://github.com/docker/compose/issues/6316) topic for more details._
+
 To log into the container, run the following:
 
 ``` sh
