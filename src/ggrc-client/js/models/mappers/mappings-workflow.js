@@ -88,6 +88,7 @@ let mappings = {
           'Comment',
           'Document',
           'Person',
+          'CalendarEvent'
         ],
         relatedObjects.instance.type);
       }

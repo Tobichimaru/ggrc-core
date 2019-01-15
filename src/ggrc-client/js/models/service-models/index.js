@@ -9,6 +9,7 @@ export {default as Context} from './context';
 export {default as ControlAssertion} from './control-assertion';
 export {default as ControlCategory} from './control-category';
 export {default as Event} from './event';
+export {default as CalendarEvent} from './calendar-event';
 export {default as Label} from './label';
 export {default as MultitypeSearch} from './multitype-search';
 export {default as NotificationConfig} from './notification-config';
