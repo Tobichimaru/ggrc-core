@@ -7,13 +7,14 @@ import datetime
 
 from ggrc import db
 from ggrc.models.mixins import Base
+from ggrc.models.mixins import base
 from ggrc.models.relationship import Relatable
 
 from sqlalchemy.orm import validates
 from sqlalchemy.ext.declarative import declared_attr
 
 
-class CalendarEvent(Relatable, Base, db.Model):
+class CalendarEvent(Relatable, base.ContextRBAC, Base, db.Model):
   """Model representing events for Calendar API."""
   __tablename__ = 'calendar_events'
 
