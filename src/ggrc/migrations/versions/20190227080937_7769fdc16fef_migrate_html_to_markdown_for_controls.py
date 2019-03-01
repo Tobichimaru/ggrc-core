@@ -68,6 +68,7 @@ def update_control_cavs(connection):
         and attribute_value REGEXP
   """ + REGEX_HTML).fetchall()
   controls_ids = {data[2] for data in cavs_data}
+  cavs_ids = {data[0] for data in cavs_data}
   cavs_table = sa.sql.table(
       'custom_attribute_values',
       sa.Column('id', sa.Integer()),
@@ -79,7 +80,9 @@ def update_control_cavs(connection):
         attribute_value=parse_html(attribute_value),
         updated_at=datetime.datetime.utcnow(),
     ).where(cavs_table.c.id == cav_id))
-
+  utils.add_to_objects_without_revisions_bulk(
+      connection, cavs_ids, "CustomAttributeValue", "modified",
+  )
   return controls_ids
 
 
