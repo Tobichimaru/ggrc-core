@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import validates
 from sqlalchemy.sql.schema import UniqueConstraint
+from sqlalchemy import orm
 
 from ggrc import db
 from ggrc.utils import errors
@@ -136,6 +137,14 @@ class CustomAttributeDefinition(attributevalidator.AttributeValidator,
   ]
 
   _reserved_names = {}
+
+  @classmethod
+  def eager_query(cls):
+    query = super(CustomAttributeDefinition, cls).eager_query()
+    query = query.options(
+        orm.undefer('title'),
+    )
+    return query
 
   def _clone(self, target):
     """Clone custom attribute definitions."""
@@ -389,7 +398,7 @@ def _get_query_for(definition_type, instance_id=None):
   """Returns query for sent args if """
   if not get_cads_counts().get((definition_type, instance_id is None)):
     return []
-  query = CustomAttributeDefinition.query.filter(
+  query = CustomAttributeDefinition.eager_query().filter(
       CustomAttributeDefinition.definition_type == definition_type,
   )
   if instance_id is None:
