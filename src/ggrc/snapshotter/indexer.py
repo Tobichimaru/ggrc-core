@@ -72,11 +72,11 @@ def _get_custom_attribute_dict():
       getattr(all_models, c)._inflector.table_singular: c for c in Types.all
   }
 
-  query = models.CustomAttributeDefinition.query.filter(
+  query = models.CustomAttributeDefinition.eager_query().filter(
       models.CustomAttributeDefinition.definition_type.in_(
           cadef_klass_names.keys()
       )
-  ).options(orm.undefer('title'))
+  )
   cads = defaultdict(list)
   for cad in query:
     cads[cadef_klass_names[cad.definition_type]].append(cad)
