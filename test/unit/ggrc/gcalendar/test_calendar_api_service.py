@@ -20,6 +20,10 @@ ErrorResp = namedtuple("ERROR_RESP", ["status", "reason"])
 class TestCalendarApiService(unittest.TestCase):
   """Test calendar api service methods."""
 
+  def __init__(self, *args, **kwargs):
+    super(TestCalendarApiService, self).__init__(*args, **kwargs)
+    self.counter = 0
+
   def setUp(self):
     """Set up mocks for testing."""
     calendar_api_service.CalendarApiService.calendar_auth = mock.MagicMock()
@@ -164,14 +168,80 @@ class TestCalendarApiService(unittest.TestCase):
         eventId="SOMEID12345",
     )
 
+  def test_delete_with_retry(self):
+    """Test delete of an event with retry."""
+    self.counter = 0
+
+    def execute_effect():
+      """Side effect of execute function."""
+      while self.counter < 1:
+        self.counter += 1
+        raise HttpError(
+            resp=ErrorResp(status=403, reason="reason"),
+            content="Test"
+        )
+      return 0
+
+    effect_mock = mock.MagicMock()
+    effect_mock.execute = execute_effect
+    self.events_mock.delete = mock.MagicMock(
+        return_value=effect_mock
+    )
+
+    response = self.service.delete_event(
+        calendar_id="primary",
+        external_event_id="SOMEID12345",
+        event_id=1,
+    )
+    self.assertEquals(self.counter, 1)
+    self.assertEquals(response['status_code'], 200)
+    self.events_mock.delete.assert_called_with(
+        calendarId="primary",
+        eventId="SOMEID12345",
+    )
+
   def test_get_event(self):
     """Test get of an event."""
     self.events_mock.get = mock.MagicMock()
+    self.events_mock.get.execute = mock.MagicMock()
     response = self.service.get_event(
         calendar_id="primary",
         external_event_id="SOMEID12345",
         event_id=1,
     )
+    self.assertEquals(response['status_code'], 200)
+    self.events_mock.get.assert_called_with(
+        calendarId="primary",
+        eventId="SOMEID12345",
+    )
+
+  def test_get_with_retry(self):
+    """Test get of an event with retry."""
+    self.counter = 0
+    exception = HttpError(
+        resp=ErrorResp(status=403, reason="reason"),
+        content="Test"
+    )
+
+    def execute_effect():
+      """Side effect of execute function."""
+      while self.counter < 1:
+        self.counter += 1
+        raise exception
+      return 1
+
+    effect_mock = mock.MagicMock()
+    effect_mock.execute = execute_effect
+    self.events_mock.get = mock.MagicMock(
+        return_value=effect_mock
+    )
+
+    response = self.service.get_event(
+        calendar_id="primary",
+        external_event_id="SOMEID12345",
+        event_id=1,
+    )
+    self.assertEquals(self.counter, 1)
     self.assertEquals(response['status_code'], 200)
     self.events_mock.get.assert_called_with(
         calendarId="primary",

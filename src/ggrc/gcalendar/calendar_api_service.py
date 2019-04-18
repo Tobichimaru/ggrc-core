@@ -7,14 +7,23 @@ import logging
 from apiclient import discovery
 from googleapiclient.errors import HttpError
 
+from ggrc.utils import retry
+
 
 logger = logging.getLogger(__name__)
+
+
+def can_retry_error(error):
+  """Check is the error raised because of rate limit."""
+  return error.resp.status == 403
 
 
 class CalendarApiService(object):
   """Service for Google Calendar API."""
 
   SCOPE = 'https://www.googleapis.com/auth/calendar'
+  SERVER_ERROR = 500
+  SUCCESS = 200
 
   def __init__(self):
     """Initializes service object."""
@@ -23,6 +32,30 @@ class CalendarApiService(object):
   @staticmethod
   def _build_response_json(status_code, content):
     return {"status_code": status_code, "content": content}
+
+  @retry(HttpError, exception_filter=can_retry_error)
+  def _get_api_event(self, calendar_id, external_event_id):
+    return self.calendar_service.events().get(
+        calendarId=calendar_id, eventId=external_event_id
+    ).execute()
+
+  @retry(HttpError, exception_filter=can_retry_error)
+  def _insert_api_event(self, calendar_id, event):
+    return self.calendar_service.events().insert(
+        calendarId=calendar_id, body=event
+    ).execute()
+
+  @retry(HttpError, exception_filter=can_retry_error)
+  def _update_api_event(self, calendar_id, event, external_event_id):
+    return self.calendar_service.events().update(
+        calendarId=calendar_id, body=event, eventId=external_event_id
+    ).execute()
+
+  @retry(HttpError, exception_filter=can_retry_error)
+  def _delete_api_event(self, calendar_id, external_event_id):
+    return self.calendar_service.events().delete(
+        calendarId=calendar_id, eventId=external_event_id
+    ).execute()
 
   @staticmethod
   def calendar_auth(version='v3'):
@@ -72,9 +105,8 @@ class CalendarApiService(object):
         'transparency': kwargs.get('transparency', 'transparent'),
     }
     try:
-      event = self.calendar_service.events().insert(
-          calendarId=calendar_id, body=event).execute()
-      return self._build_response_json(200, event)
+      event = self._insert_api_event(calendar_id, event)
+      return self._build_response_json(self.SUCCESS, event)
     except HttpError as err:
       logger.warn(
           "Create of the event %d has failed with HttpError. "
@@ -86,7 +118,7 @@ class CalendarApiService(object):
           "Create of the event %d has failed with %s.",
           event_id, exp.__class__.__name__,
       )
-      return self._build_response_json(500, None)
+      return self._build_response_json(self.SERVER_ERROR, None)
 
   # pylint: disable=too-many-arguments
   def update_event(self, external_event_id, event_id, calendar_id,
@@ -123,10 +155,8 @@ class CalendarApiService(object):
         'transparency': kwargs.get('transparency', 'transparent'),
     }
     try:
-      event = self.calendar_service.events().update(
-          calendarId=calendar_id, body=event, eventId=external_event_id
-      ).execute()
-      return self._build_response_json(200, event)
+      event = self._update_api_event(calendar_id, event, external_event_id)
+      return self._build_response_json(self.SUCCESS, event)
     except HttpError as err:
       logger.warn(
           "Update of the event %d has failed with HttpError. "
@@ -138,7 +168,7 @@ class CalendarApiService(object):
           "Update of the event %d has failed with %s.",
           event_id, exp.__class__.__name__,
       )
-      return self._build_response_json(500, None)
+      return self._build_response_json(self.SERVER_ERROR, None)
 
   def delete_event(self, calendar_id, external_event_id, event_id):
     """Deletes an event in a given Google Calendar.
@@ -148,11 +178,9 @@ class CalendarApiService(object):
         external_event_id: Google Calendar Event id.
         event_id: Event id in the database
     """
-    calendar = self.calendar_auth()
     try:
-      calendar.events().delete(calendarId=calendar_id,
-                               eventId=external_event_id).execute()
-      return self._build_response_json(200, None)
+      self._delete_api_event(calendar_id, external_event_id)
+      return self._build_response_json(self.SUCCESS, None)
     except HttpError as err:
       logger.warn(
           "Deletion of the event %d has failed with HttpError. "
@@ -164,7 +192,7 @@ class CalendarApiService(object):
           "Deletion of the event %d has failed with %s.",
           event_id, exp.__class__.__name__,
       )
-      return self._build_response_json(500, None)
+      return self._build_response_json(self.SERVER_ERROR, None)
 
   def get_event(self, calendar_id, external_event_id, event_id):
     """Gets an event in given Google Calendar.
@@ -175,9 +203,7 @@ class CalendarApiService(object):
         event_id: Google Calendar Event id.
     """
     try:
-      event = self.calendar_service.events().get(
-          calendarId=calendar_id, eventId=external_event_id
-      ).execute()
+      event = self._get_api_event(calendar_id, external_event_id)
       return self._build_response_json(200, event)
     except HttpError as err:
       logger.warn(
@@ -190,4 +216,4 @@ class CalendarApiService(object):
           "Get of the event %d has failed with %s.",
           event_id, exp.__class__.__name__,
       )
-      return self._build_response_json(500, None)
+      return self._build_response_json(self.SERVER_ERROR, None)

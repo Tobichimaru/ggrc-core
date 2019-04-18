@@ -6,19 +6,23 @@
 This module should contain only the most general utility function and any
 specific utilities should be in their own module.
 """
+
+import time
+import functools
+from functools import wraps
 import itertools
 import collections
 import logging
 import datetime
-import functools
 import json
 import re
 import sys
 
+import flask
+
 import sqlalchemy
 from sqlalchemy.orm import class_mapper
 
-import flask
 from ggrc.settings import CUSTOM_URL_ROOT
 from ggrc.utils import benchmarks
 
@@ -386,3 +390,36 @@ def is_deferred_loaded(obj):
     if is_deferred:
       return False
   return True
+
+
+def retry(exception, tries=3, delay=1, backoff=2, exception_filter=None):
+  """Retry calling the decorated function using an exponential backoff.
+
+  Params:
+    exception: the exception to check
+    tries: number of times to try (not retry) before giving up
+    delay: initial delay between retries in seconds
+    backoff: backoff multiplier
+    exception_filter: A function that returns true or false depending
+        on exception data. This function is used to determine whether
+        caught exception should be retried or not
+  """
+  def deco_retry(func):
+    """Wrapper of function."""
+    @wraps(func)
+    def func_retry(*args, **kwargs):
+      """Retry inner function."""
+      curr_tries, curr_delay = tries, delay
+      while curr_tries > 0:
+        try:
+          return func(*args, **kwargs)
+        except exception as exp:
+          if exception_filter and not exception_filter(exp):
+            return func(*args, **kwargs)
+          logger.info("Retrying request after exception %s...", str(exp))
+          time.sleep(curr_delay)
+          curr_tries -= 1
+          curr_delay *= backoff
+      return func(*args, **kwargs)
+    return func_retry
+  return deco_retry
